@@ -25,9 +25,20 @@ THE SOFTWARE.
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <title>Asynchronous Shader Compilation Demo</title>
+
+    <style>
+    .result {
+      border: 1px solid gray;
+      margin: 0.5em;
+      padding: 0.5em;
+      float: left;
+    }
+    </style>
   </head>
   <body>
-    <canvas id="gl-canvas" style="width: 256px; height: 256px;"></canvas>
+    <h1>Asynchronous Shader Compilation</h1>
+
+    <div id="results"></div>
 
     <script id="default-vs" type="x-shader/x-vertex">
       precision highp float;
@@ -35,16 +46,14 @@ THE SOFTWARE.
       attribute vec3 position;
       attribute vec3 normal;
 
-      uniform mat4 viewMat;
-      uniform mat4 modelMat;
+      uniform mat4 modelViewMat;
       uniform mat4 projectionMat;
 
       varying vec3 vNormal;
 
       void main(void) {
-         //mat3 normalMat = mat3(modelMat);
-         vNormal = normal; // * normalMat;
-         gl_Position = projectionMat * viewMat * modelMat * vec4(position, 1.0);
+         vNormal = normal;
+         gl_Position = projectionMat * modelViewMat * vec4(position, 1.0);
       }
     </script>
 
@@ -64,47 +73,7 @@ THE SOFTWARE.
     <script>
       "use strict";
 
-      function getQueryString(name, defaultValue) {
-        var query = window.location.search.substring(1);
-        var vars = query.split("&");
-        for (var i = 0; i < vars.length; i++) {
-          var pair = vars[i].split("=");
-          if (pair[0] == name) {
-            return unescape(pair[1]);
-          }
-        }
-        return defaultValue;
-      }
-
-      function getQueryValue(name, defaultValue) {
-        var value = getQueryString(name, null);
-        if (value == null) {
-          return defaultValue;
-        }
-        return parseInt(value, 10);
-      }
-
-      var canvas = document.getElementById("gl-canvas");
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
-      var gl = canvas.getContext("webgl");
-
-      gl.clearColor(0, 0, 0, 1);
-      gl.enable(gl.DEPTH_TEST);
-
-      var startTime = performance.now();
-
-      var shaderStartTime = performance.now();
-
-      var testProgram = getQueryValue("async", 1) ? new AsyncProgram(gl) : new SyncProgram(gl);
-      testProgram.attachShaderSourceFromTag("#default-vs", gl.VERTEX_SHADER);
-      testProgram.attachShaderSourceFromTag("#default-fs", gl.FRAGMENT_SHADER);
-      testProgram.link();
-
-      console.log("Shader link time:", performance.now() - shaderStartTime, "ms");
-
-      var monkeyModel = null;
-      var LoadMonkey = function(gl) {
+      var loadModel = function(gl) {
         return new Promise(function(resolve, reject) {
           var xhr = new XMLHttpRequest();
           xhr.addEventListener("load", function (ev) {
@@ -130,9 +99,7 @@ THE SOFTWARE.
               gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indexBuffer);
               gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexData, gl.STATIC_DRAW);
 
-              monkeyModel = model;
-
-              resolve();
+              resolve(model);
             } else {
               reject(xhr.statusText);
             }
@@ -142,58 +109,110 @@ THE SOFTWARE.
         });
       }
 
-      // Do some other loading...
-      var monkeyStartTime = performance.now();
-      LoadMonkey(gl).then(function() {
-        console.log("Monkey Loaded:", performance.now() - monkeyStartTime, "ms");
-        draw();
-      });
+      var modelViewMat = mat4.create();
+      mat4.translate(modelViewMat, modelViewMat, [0.0, 0.0, -2.5]);
 
-      var viewMat = mat4.create();
-      var modelMat = mat4.create();
       var projectionMat = mat4.create();
+      mat4.perspective(projectionMat, 45.0, 1.0, 0.1, 1024.0);
 
-      mat4.perspective(projectionMat, 45.0, gl.drawingBufferWidth/gl.drawingBufferHeight, 0.1, 1024.0);
-
-      var firstDraw = true;
-      var drawStartTime;
-      function draw() {
-        window.requestAnimationFrame(draw);
-
-        mat4.identity(modelMat);
-        mat4.translate(modelMat, modelMat, [0.0, 0.0, -2.5]);
-        mat4.rotateY(modelMat, modelMat, performance.now() / 1000.0);
-
-        if (firstDraw) {
-          drawStartTime = performance.now();
-        }
-
+      function draw(gl, model, program) {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        testProgram.use();
+        program.use();
 
-        gl.uniformMatrix4fv(testProgram.uniform.viewMat, false, viewMat);
-        gl.uniformMatrix4fv(testProgram.uniform.modelMat, false, modelMat);
-        gl.uniformMatrix4fv(testProgram.uniform.projectionMat, false, projectionMat);
+        gl.uniformMatrix4fv(program.uniform.modelViewMat, false, modelViewMat);
+        gl.uniformMatrix4fv(program.uniform.projectionMat, false, projectionMat);
 
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, monkeyModel.indexBuffer);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indexBuffer);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, monkeyModel.vertexBuffer);
-        gl.enableVertexAttribArray(testProgram.attrib.position);
-        gl.vertexAttribPointer(testProgram.attrib.position, 3, gl.FLOAT, false, 12, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, model.vertexBuffer);
+        gl.enableVertexAttribArray(program.attrib.position);
+        gl.vertexAttribPointer(program.attrib.position, 3, gl.FLOAT, false, 12, 0);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, monkeyModel.normalBuffer);
-        gl.enableVertexAttribArray(testProgram.attrib.normal);
-        gl.vertexAttribPointer(testProgram.attrib.normal, 3, gl.FLOAT, false, 12, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, model.normalBuffer);
+        gl.enableVertexAttribArray(program.attrib.normal);
+        gl.vertexAttribPointer(program.attrib.normal, 3, gl.FLOAT, false, 12, 0);
 
-        gl.drawElements(gl.TRIANGLES, monkeyModel.indexCount, gl.UNSIGNED_SHORT, 0);
-
-        if (firstDraw) {
-          firstDraw = false;
-          console.log("First Draw:", performance.now() - drawStartTime, "ms");
-          console.log("Total time:", performance.now() - startTime, "ms");
-        }
+        gl.drawElements(gl.TRIANGLES, model.indexCount, gl.UNSIGNED_SHORT, 0);
       }
+
+      function runTest(testName, programPrototype, attachToDocument) {
+        return new Promise(function(resolve, reject) {
+          var totalStartTime = performance.now();
+
+          var canvas = document.createElement("canvas");
+          canvas.width = 256;
+          canvas.height = 256;
+          var gl = canvas.getContext("webgl");
+
+          gl.clearColor(0, 0, 0, 1);
+          gl.enable(gl.DEPTH_TEST);
+
+          var linkStartTime = performance.now();
+
+          var program = new programPrototype(gl);
+          program.attachShaderSourceFromTag("#default-vs", gl.VERTEX_SHADER);
+          program.attachShaderSourceFromTag("#default-fs", gl.FRAGMENT_SHADER);
+          program.link();
+
+          var linkDuration = performance.now() - linkStartTime;
+
+          var modelStartTime = performance.now();
+          loadModel(gl).then(function(model) {
+            var modelDuration = performance.now() - modelStartTime;
+
+            var drawStartTime = performance.now();
+            draw(gl, model, program);
+            var drawDuration = performance.now() - drawStartTime;
+            var totalDuration = performance.now() - totalStartTime;
+
+            if (attachToDocument) {
+              // Build test results
+              var testDiv = document.createElement("div");
+              testDiv.classList.add("result");
+
+              testDiv.appendChild(canvas);
+
+              var testHeader = document.createElement("h2");
+              testHeader.innerText = testName;
+              testDiv.appendChild(testHeader);
+
+              var resultList = document.createElement("ul");
+
+              var result = document.createElement("li");
+              result.innerHTML = "<b>Program Link:</b> " + linkDuration.toFixed(3) + "ms";
+              resultList.appendChild(result);
+
+              result = document.createElement("li");
+              result.innerHTML = "<b>Mesh Load:</b> " + modelDuration.toFixed(3) + "ms";
+              resultList.appendChild(result);
+
+              result = document.createElement("li");
+              result.innerHTML = "<b>First Draw:</b> " + drawDuration.toFixed(3) + "ms";
+              resultList.appendChild(result);
+
+              result = document.createElement("li");
+              result.innerHTML = "<b>Total Test Time:</b> " + totalDuration.toFixed(3) + "ms";
+              resultList.appendChild(result);
+
+              testDiv.appendChild(resultList);
+
+              document.getElementById("results").appendChild(testDiv);
+            }
+
+            resolve();
+          });
+        });
+      }
+
+      // The first test run isn't recorded. It's just to ensure that the shader
+      // and mesh are cached so that none of the following test runs have an
+      // unfair advantage.
+      runTest("Prime", AsyncProgram, false).then(function() {
+        runTest("Asynchronous", AsyncProgram, true).then(function() {
+          runTest("Synchronous", SyncProgram, true);
+        });
+      })
     </script>
   </body>
 </html>
