@@ -33,12 +33,56 @@ THE SOFTWARE.
       padding: 0.5em;
       float: left;
     }
+
+    .gray {
+      color: #888888;
+    }
     </style>
   </head>
   <body>
     <h1>Asynchronous Shader Compilation</h1>
 
-    <div id="results"></div>
+    <p>This test demonstrates two methods for compiling WebGL shaders. The exact
+    same GL calls are made in both cases, only the order of operations
+    is different.</p>
+
+    <p>The <b>"Synchronous"</b> method follows a common pattern for compiling
+    and linking WebGL shaders. Both the vertex and fragment shader are checked
+    for errors immediately after calling gl.compileShader, and the program is
+    checked for errors immediately after calling gl.linkProgram. The uniform and
+    attribute locations are queried immediately after a successful link.</p>
+
+    <p>This forces the browser to wait for the result of the compile/link,
+    which can be a long process. During that time your javascript execution is
+    blocked and the browser may be less responsive.</p>
+
+    <p>The <b>"Asynchronous"</b> method, on the other hand, does not check for
+    compile or link errors until immediately before the first use of the
+    program. It also defers querying of uniforms and attribute locations till
+    that point. In between the program link and first draw other work is done to
+    set up the scene, in this case a mesh is downloaded and the appropriate
+    vertex/index buffers are created. This allows browser that attempt to
+    compile shaders asynchronously, like Chrome, a chance to finish the process
+    in the background. That way WebGL blocks as little as possible, and the
+    overall scene load may go faster.</p>
+
+    <p>With the Asynchronous method the first draw using a given program may
+    may take slightly longer since more state is being queried at that time, but
+    the shorter amount of time spent waiting for program linking can more than
+    make up the difference. On browsers that don't asynchronously process
+    shaders the time difference between the two methods should be negligable, so
+    there's no real downside to structuring your code this way.</p>
+
+    <p><b>Note:</b> Mesh Load times shown here include download time, which can
+    vary dramatically run-to-run, which is why this value is dimmed out. It's
+    included only to demonstrate how much time the browser has to asynchronously
+    process the shader before it's first use.</p>
+
+    <hr/>
+
+    <div id="results">
+      Preparing test...
+    </div>
 
     <script id="default-vs" type="x-shader/x-vertex">
       precision highp float;
@@ -138,8 +182,6 @@ THE SOFTWARE.
 
       function runTest(testName, programPrototype, attachToDocument) {
         return new Promise(function(resolve, reject) {
-          var totalStartTime = performance.now();
-
           var canvas = document.createElement("canvas");
           canvas.width = 256;
           canvas.height = 256;
@@ -164,7 +206,6 @@ THE SOFTWARE.
             var drawStartTime = performance.now();
             draw(gl, model, program);
             var drawDuration = performance.now() - drawStartTime;
-            var totalDuration = performance.now() - totalStartTime;
 
             if (attachToDocument) {
               // Build test results
@@ -174,7 +215,7 @@ THE SOFTWARE.
               testDiv.appendChild(canvas);
 
               var testHeader = document.createElement("h2");
-              testHeader.innerText = testName;
+              testHeader.innerHTML = testName;
               testDiv.appendChild(testHeader);
 
               var resultList = document.createElement("ul");
@@ -184,15 +225,12 @@ THE SOFTWARE.
               resultList.appendChild(result);
 
               result = document.createElement("li");
+              result.classList.add("gray");
               result.innerHTML = "<b>Mesh Load:</b> " + modelDuration.toFixed(3) + "ms";
               resultList.appendChild(result);
 
               result = document.createElement("li");
               result.innerHTML = "<b>First Draw:</b> " + drawDuration.toFixed(3) + "ms";
-              resultList.appendChild(result);
-
-              result = document.createElement("li");
-              result.innerHTML = "<b>Total Test Time:</b> " + totalDuration.toFixed(3) + "ms";
               resultList.appendChild(result);
 
               testDiv.appendChild(resultList);
@@ -209,8 +247,9 @@ THE SOFTWARE.
       // and mesh are cached so that none of the following test runs have an
       // unfair advantage.
       runTest("Prime", AsyncProgram, false).then(function() {
-        runTest("Asynchronous", AsyncProgram, true).then(function() {
-          runTest("Synchronous", SyncProgram, true);
+        document.getElementById("results").innerHTML = "";
+        runTest("Synchronous", SyncProgram, true).then(function() {
+          runTest("Asynchronous", AsyncProgram, true);
         });
       })
     </script>
