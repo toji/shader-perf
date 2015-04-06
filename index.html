@@ -28,6 +28,11 @@ THE SOFTWARE.
 
     <style>
     .result {
+      height: 450px;
+    }
+
+    .test {
+      height: 400px;
       border: 1px solid gray;
       margin: 0.5em;
       padding: 0.5em;
@@ -85,6 +90,8 @@ THE SOFTWARE.
     <div id="results">
       Preparing test...
     </div>
+
+    <button id="run-tests" onclick="runTests();">Run Again</button>
 
     <script id="default-vs" type="x-shader/x-vertex">
       precision highp float;
@@ -182,7 +189,7 @@ THE SOFTWARE.
         gl.drawElements(gl.TRIANGLES, model.indexCount, gl.UNSIGNED_SHORT, 0);
       }
 
-      function runTest(testName, programPrototype, attachToDocument) {
+      function runTest(testName, programPrototype, parentElement) {
         return new Promise(function(resolve, reject) {
           var canvas = document.createElement("canvas");
           canvas.width = 256;
@@ -209,10 +216,10 @@ THE SOFTWARE.
             draw(gl, model, program);
             var drawDuration = performance.now() - drawStartTime;
 
-            if (attachToDocument) {
+            if (parentElement) {
               // Build test results
               var testDiv = document.createElement("div");
-              testDiv.classList.add("result");
+              testDiv.classList.add("test");
 
               testDiv.appendChild(canvas);
 
@@ -237,7 +244,7 @@ THE SOFTWARE.
 
               testDiv.appendChild(resultList);
 
-              document.getElementById("results").appendChild(testDiv);
+              parentElement.appendChild(testDiv);
             }
 
             resolve();
@@ -245,14 +252,21 @@ THE SOFTWARE.
         });
       }
 
+      function runTests() {
+        var resultDiv = document.createElement("div");
+        resultDiv.classList.add("result");
+        document.getElementById("results").appendChild(resultDiv);
+        runTest("Synchronous", SyncProgram, resultDiv).then(function() {
+          runTest("Asynchronous", AsyncProgram, resultDiv);
+        });
+      }
+
       // The first test run isn't recorded. It's just to ensure that the shader
       // and mesh are cached so that none of the following test runs have an
       // unfair advantage.
-      runTest("Prime", AsyncProgram, false).then(function() {
+      runTest("Prime", AsyncProgram).then(function() {
         document.getElementById("results").innerHTML = "";
-        runTest("Synchronous", SyncProgram, true).then(function() {
-          runTest("Asynchronous", AsyncProgram, true);
-        });
+        runTests();
       })
     </script>
   </body>
