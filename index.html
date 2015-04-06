@@ -212,42 +212,44 @@ THE SOFTWARE.
           loadModel(gl).then(function(model) {
             var modelDuration = performance.now() - modelStartTime;
 
-            var drawStartTime = performance.now();
-            draw(gl, model, program);
-            var drawDuration = performance.now() - drawStartTime;
+            window.requestAnimationFrame(function() {
+              var drawStartTime = performance.now();
+              draw(gl, model, program);
+              var drawDuration = performance.now() - drawStartTime;
 
-            if (parentElement) {
-              // Build test results
-              var testDiv = document.createElement("div");
-              testDiv.classList.add("test");
+              if (parentElement) {
+                // Build test results
+                var testDiv = document.createElement("div");
+                testDiv.classList.add("test");
 
-              testDiv.appendChild(canvas);
+                testDiv.appendChild(canvas);
 
-              var testHeader = document.createElement("h2");
-              testHeader.innerHTML = testName;
-              testDiv.appendChild(testHeader);
+                var testHeader = document.createElement("h2");
+                testHeader.innerHTML = testName;
+                testDiv.appendChild(testHeader);
 
-              var resultList = document.createElement("ul");
+                var resultList = document.createElement("ul");
 
-              var result = document.createElement("li");
-              result.innerHTML = "<b>Program Link:</b> " + linkDuration.toFixed(3) + "ms";
-              resultList.appendChild(result);
+                var result = document.createElement("li");
+                result.innerHTML = "<b>Program Link:</b> " + linkDuration.toFixed(3) + "ms";
+                resultList.appendChild(result);
 
-              result = document.createElement("li");
-              result.classList.add("gray");
-              result.innerHTML = "<b>Mesh Load:</b> " + modelDuration.toFixed(3) + "ms";
-              resultList.appendChild(result);
+                result = document.createElement("li");
+                result.classList.add("gray");
+                result.innerHTML = "<b>Mesh Load:</b> " + modelDuration.toFixed(3) + "ms";
+                resultList.appendChild(result);
 
-              result = document.createElement("li");
-              result.innerHTML = "<b>First Draw:</b> " + drawDuration.toFixed(3) + "ms";
-              resultList.appendChild(result);
+                result = document.createElement("li");
+                result.innerHTML = "<b>First Draw:</b> " + drawDuration.toFixed(3) + "ms";
+                resultList.appendChild(result);
 
-              testDiv.appendChild(resultList);
+                testDiv.appendChild(resultList);
 
-              parentElement.appendChild(testDiv);
-            }
+                parentElement.appendChild(testDiv);
+              }
 
-            resolve();
+              window.requestAnimationFrame(resolve);
+            });
           });
         });
       }
